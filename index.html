@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Iron Log">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0f1115">
+<title>Iron Log — Gym Tracker</title>
+<link rel="stylesheet" href="style.css">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" href="favicon.png">
+</head>
+<body>
+
+<div class="app">
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark">🏋️</span>
+      <span class="brand-name">Iron Log</span>
+    </div>
+    <div class="streak-pill" id="streakPill">
+      <span class="flame">🔥</span>
+      <span id="streakCount">0</span>
+      <span class="streak-label">day streak</span>
+    </div>
+  </header>
+
+  <nav class="tabs" id="tabs">
+    <button class="tab-btn active" data-tab="today">Log Workout</button>
+    <button class="tab-btn" data-tab="history">History</button>
+    <button class="tab-btn" data-tab="exercises">Exercises &amp; PRs</button>
+    <button class="tab-btn" data-tab="stats">Stats</button>
+  </nav>
+
+  <main id="views">
+
+    <!-- LOG WORKOUT -->
+    <section class="view active" id="view-today">
+      <div class="card">
+        <div class="card-row">
+          <label class="field">
+            <span>Date</span>
+            <input type="date" id="workoutDate">
+          </label>
+          <div class="day-status" id="dayStatus"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Add Exercise</div>
+        <div class="add-exercise-row" id="addExerciseRow">
+          <select id="exerciseSelect"></select>
+          <button class="btn btn-secondary" id="btnAddExerciseToLog">+ Add to Workout</button>
+          <button class="btn btn-ghost" id="btnNewExercise">New exercise…</button>
+        </div>
+        <div id="noExercisesPrompt" class="empty-state" style="display:none">
+          You haven't added any exercises yet.
+          <div style="margin-top:10px">
+            <button class="btn btn-primary" id="btnNewExerciseEmpty">+ Add Your First Exercise</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="loggedExercises"></div>
+
+      <button class="btn btn-primary btn-block" id="btnSaveWorkout">Save Workout</button>
+    </section>
+
+    <!-- HISTORY -->
+    <section class="view" id="view-history">
+      <div class="card">
+        <div class="card-title">Last 12 Weeks</div>
+        <div id="calendarGrid" class="calendar-grid"></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Workout Log</div>
+        <div id="historyList" class="history-list"></div>
+      </div>
+    </section>
+
+    <!-- EXERCISES & PRS -->
+    <section class="view" id="view-exercises">
+      <div class="card">
+        <div class="card-title">Exercises</div>
+        <div id="exerciseManageList" class="exercise-manage-list"></div>
+        <div class="add-exercise-row" style="margin-top:12px">
+          <input type="text" id="newExerciseInput" placeholder="New exercise name">
+          <select id="newExerciseCategory">
+            <option>Push</option>
+            <option>Pull</option>
+            <option>Legs</option>
+            <option>Core</option>
+            <option>Other</option>
+          </select>
+          <button class="btn btn-secondary" id="btnCreateExercise">Add</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">Personal Records</div>
+        <div id="prList" class="pr-list"></div>
+      </div>
+    </section>
+
+    <!-- STATS -->
+    <section class="view" id="view-stats">
+      <div class="stats-grid" id="statsGrid"></div>
+      <div class="card">
+        <div class="card-title">1RM Progress</div>
+        <select id="progressExerciseSelect"></select>
+        <div id="progressChart" class="progress-chart"></div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<div class="modal-backdrop" id="modalBackdrop">
+  <div class="modal">
+    <div class="modal-title" id="modalTitle">Title</div>
+    <div class="modal-body" id="modalBody"></div>
+    <div class="modal-actions" id="modalActions"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
