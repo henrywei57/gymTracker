@@ -406,10 +406,14 @@ input[type="date"] { color-scheme: dark; }
   padding: 18px;
   max-width: 380px;
   width: 100%;
+  /* never taller than the screen — short/landscape viewports would clip the top */
+  max-height: calc(100vh - 40px);
+  display: flex;
+  flex-direction: column;
 }
-.modal-title { font-weight: 700; margin-bottom: 10px; }
+.modal-title { font-weight: 700; margin-bottom: 10px; flex-shrink: 0; }
 .modal-body { font-size: 0.9rem; color: var(--text-dim); margin-bottom: 16px; }
-.modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.modal-actions { display: flex; gap: 8px; justify-content: flex-end; flex-shrink: 0; flex-wrap: wrap; }
 
 /* Toast */
 .toast {
@@ -548,7 +552,7 @@ input[type="date"] { color-scheme: dark; }
 }
 .sched-head-row span:not(:first-child) { text-align: center; }
 .modal.modal-wide { max-width: 460px; }
-.modal-body { max-height: 62vh; overflow-y: auto; }
+.modal-body { flex: 1; min-height: 0; overflow-y: auto; }
 
 /* Roomier layout for the week grid on laptops */
 @media (min-width: 1024px) {
