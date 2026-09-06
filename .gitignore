@@ -1,5 +1,4 @@
 .DS_Store
 
-# local tooling / unrelated to the site
+# machine-local tooling
 .claude/
-ios/
