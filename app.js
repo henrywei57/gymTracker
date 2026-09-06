@@ -57,9 +57,11 @@ function loadState() {
 
 let lastWrittenRaw = localStorage.getItem(STORAGE_KEY);
 
-function saveState() {
+function saveState({ remote = true } = {}) {
+  state.updatedAt = new Date().toISOString();
   lastWrittenRaw = JSON.stringify(state);
   localStorage.setItem(STORAGE_KEY, lastWrittenRaw);
+  if (remote) queueSync();
 }
 
 function getExercise(id) {
@@ -1309,18 +1311,274 @@ window.addEventListener('storage', e => {
 });
 
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden) reloadStateFromStorage();
+  if (document.hidden) return;
+  reloadStateFromStorage();
+  pullRemote({ quiet: true });
 });
 
 window.addEventListener('focus', reloadStateFromStorage);
+
+// ---------- Repo sync ----------
+//
+// The whole app state lives in one file in this GitHub repo (data.json).
+// Every device reads that file on load; a device that has been given a token
+// writes it back, so the plan and today's marks follow you around.
+
+const SYNC_KEY = 'ironlog_sync_v1';
+const SYNC_DEFAULTS = { token: '', repo: 'henrywei57/gymTracker', branch: 'main', path: 'data.json' };
+
+let syncCfg = loadSyncConfig();
+let syncSha = null;
+let syncTimer = null;
+let syncBusy = false;
+let syncPending = false; // local edits waiting to be written to the repo
+
+function loadSyncConfig() {
+  try {
+    const raw = localStorage.getItem(SYNC_KEY);
+    if (raw) return { ...SYNC_DEFAULTS, ...JSON.parse(raw) };
+  } catch (e) {
+    console.error('Failed to read sync config', e);
+  }
+  return { ...SYNC_DEFAULTS };
+}
+
+function saveSyncConfig() {
+  localStorage.setItem(SYNC_KEY, JSON.stringify(syncCfg));
+}
+
+function canWriteRemote() {
+  return !!(syncCfg.token && syncCfg.repo && syncCfg.path);
+}
+
+function setSyncStatus(text, kind) {
+  const pill = document.getElementById('syncPill');
+  if (!pill) return;
+  pill.className = `sync-pill${kind ? ` ${kind}` : ''}`;
+  document.getElementById('syncText').textContent = text;
+}
+
+function syncStatusLabel() {
+  if (!canWriteRemote()) return 'Read only';
+  if (!syncCfg.lastSyncAt) return 'Sync';
+  const mins = Math.round((Date.now() - new Date(syncCfg.lastSyncAt).getTime()) / 60000);
+  if (mins < 1) return 'Synced';
+  if (mins < 60) return `${mins}m ago`;
+  return `${Math.round(mins / 60)}h ago`;
+}
+
+// The plain file on the site itself — no token needed, so a fresh device still
+// picks up the latest plan that was pushed from somewhere else.
+async function fetchRemotePublic() {
+  const res = await fetch(`./${syncCfg.path}?t=${Date.now()}`, { cache: 'no-store' });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+// The API copy — fresher than the CDN and it hands back the blob sha we need to write.
+async function fetchRemoteApi() {
+  const url = `https://api.github.com/repos/${syncCfg.repo}/contents/${syncCfg.path}?ref=${syncCfg.branch}&t=${Date.now()}`;
+  const res = await fetch(url, {
+    cache: 'no-store',
+    headers: { Accept: 'application/vnd.github+json', Authorization: `Bearer ${syncCfg.token}` },
+  });
+  if (res.status === 404) { syncSha = null; return null; }
+  if (!res.ok) throw new Error(`GitHub ${res.status}`);
+  const body = await res.json();
+  syncSha = body.sha;
+  return JSON.parse(decodeURIComponent(escape(atob(body.content.replace(/\s/g, '')))));
+}
+
+function remoteHasContent(remote) {
+  if (!remote || !remote.state) return false;
+  const st = remote.state;
+  const planned = Object.values(st.schedule || {}).some(d => d && ((d.label || '').trim() || (d.items || []).length));
+  return !!((st.exercises || []).length || planned || Object.keys(st.progress || {}).length || (st.workouts || []).length);
+}
+
+function remoteHasNewer(remote) {
+  if (!remote) return false;
+  return String(remote.updatedAt || '') > String(state.updatedAt || '');
+}
+
+function localIsEmpty() {
+  const planned = Object.values(state.schedule || {}).some(d => d && ((d.label || '').trim() || (d.items || []).length));
+  return !((state.exercises || []).length || planned || Object.keys(state.progress || {}).length || (state.workouts || []).length);
+}
+
+// Take the repo's copy when it is newer, or when this device has nothing yet.
+function shouldAdoptRemote(remote) {
+  return remoteHasContent(remote) && (localIsEmpty() || remoteHasNewer(remote));
+}
+
+function adoptRemote(remote) {
+  state = remote.state;
+  ensureSchedule();
+  ensureProgress();
+  lastWrittenRaw = JSON.stringify(state);
+  localStorage.setItem(STORAGE_KEY, lastWrittenRaw);
+  renderAll();
+}
+
+async function pullRemote({ quiet } = {}) {
+  if (syncBusy) return;
+  syncBusy = true;
+  try {
+    setSyncStatus('Checking…', 'busy');
+    const remote = canWriteRemote() ? await fetchRemoteApi() : await fetchRemotePublic();
+    // Never overwrite edits that haven't been written back yet.
+    if (shouldAdoptRemote(remote) && !syncPending) {
+      adoptRemote(remote);
+      if (!quiet) toast('Pulled the latest plan');
+      setSyncStatus(syncStatusLabel(), 'ok');
+      return 'pulled';
+    }
+    setSyncStatus(syncStatusLabel(), canWriteRemote() ? 'ok' : '');
+    return 'current';
+  } catch (e) {
+    console.error('Pull failed', e);
+    setSyncStatus('Offline', 'bad');
+    if (!quiet) toast(`Couldn't reach the repo: ${e.message}`);
+    return 'error';
+  } finally {
+    syncBusy = false;
+  }
+}
+
+async function pushRemote({ quiet } = {}) {
+  if (!canWriteRemote()) return;
+  if (syncBusy) { queueSync(); return; } // a pull is in flight — try again once it lands
+  syncBusy = true;
+  try {
+    setSyncStatus('Saving…', 'busy');
+    const remote = await fetchRemoteApi();
+    if (remoteHasContent(remote) && remoteHasNewer(remote)) {
+      // Another device saved after us — take theirs rather than clobbering it.
+      adoptRemote(remote);
+      syncCfg.lastSyncAt = new Date().toISOString();
+      syncPending = false;
+      saveSyncConfig();
+      setSyncStatus(syncStatusLabel(), 'ok');
+      if (!quiet) toast('Another device was ahead — pulled instead');
+      return 'pulled';
+    }
+
+    const payload = { version: 1, updatedAt: state.updatedAt, state };
+    const body = {
+      message: `Update workout data (${new Date().toISOString().slice(0, 16).replace('T', ' ')})`,
+      content: btoa(unescape(encodeURIComponent(JSON.stringify(payload, null, 2)))),
+      branch: syncCfg.branch,
+    };
+    if (syncSha) body.sha = syncSha;
+
+    const res = await fetch(`https://api.github.com/repos/${syncCfg.repo}/contents/${syncCfg.path}`, {
+      method: 'PUT',
+      headers: {
+        Accept: 'application/vnd.github+json',
+        Authorization: `Bearer ${syncCfg.token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const detail = await res.json().catch(() => ({}));
+      throw new Error(detail.message || `GitHub ${res.status}`);
+    }
+    const saved = await res.json();
+    syncSha = saved.content && saved.content.sha;
+    syncCfg.lastSyncAt = new Date().toISOString();
+    syncPending = false;
+    saveSyncConfig();
+    setSyncStatus(syncStatusLabel(), 'ok');
+    if (!quiet) toast('Saved to the repo');
+    return 'pushed';
+  } catch (e) {
+    console.error('Push failed', e);
+    setSyncStatus('Failed', 'bad');
+    toast(`Sync failed: ${e.message}`);
+    return 'error';
+  } finally {
+    syncBusy = false;
+  }
+}
+
+// Called after every local change; batches a burst of taps into one commit.
+function queueSync() {
+  if (!canWriteRemote()) return;
+  syncPending = true;
+  setSyncStatus('Pending…', 'busy');
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(() => pushRemote({ quiet: true }), 2500);
+}
+
+function openSyncModal() {
+  openModal({
+    title: 'Sync',
+    bodyHTML: `
+      <div class="import-hint" style="margin-bottom:12px">
+        Your plan and marks live in <code>${escapeHTML(syncCfg.path)}</code> in the repo, so every
+        device loads the same data. Reading needs nothing; saving needs a token with write access
+        to the repo.
+      </div>
+      <div class="field" style="margin-bottom:10px">
+        <span>Repository</span>
+        <input type="text" id="syncRepo" value="${escapeHTML(syncCfg.repo)}" placeholder="owner/repo">
+      </div>
+      <div class="add-exercise-row" style="margin-bottom:10px">
+        <label class="field field-grow">
+          <span>Branch</span>
+          <input type="text" id="syncBranch" value="${escapeHTML(syncCfg.branch)}">
+        </label>
+        <label class="field field-grow">
+          <span>File</span>
+          <input type="text" id="syncPath" value="${escapeHTML(syncCfg.path)}">
+        </label>
+      </div>
+      <div class="field" style="margin-bottom:8px">
+        <span>Access token (stored only in this browser)</span>
+        <input type="password" id="syncToken" value="${escapeHTML(syncCfg.token)}" placeholder="github_pat_…" autocomplete="off">
+      </div>
+      <div class="import-hint" style="margin-bottom:12px">
+        Create a fine-grained token limited to this repository with <strong>Contents: Read and write</strong> at
+        <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">github.com/settings/personal-access-tokens</a>.
+        Leave it empty on a device that should only read.
+      </div>
+      <div class="import-preview" id="syncStatusLine">
+        ${canWriteRemote() ? `Saving is on. Last sync: ${syncCfg.lastSyncAt ? formatPretty(syncCfg.lastSyncAt.slice(0, 10)) + ' ' + syncCfg.lastSyncAt.slice(11, 16) : 'never'}.` : 'Read only on this device — changes stay local until you add a token.'}
+      </div>
+    `,
+    buttons: [
+      { label: 'Pull now', className: 'btn-ghost', closesModal: false, onClick: () => pullRemote() },
+      { label: 'Cancel', className: 'btn-ghost' },
+      {
+        label: 'Save', className: 'btn-primary', onClick: () => {
+          syncCfg.repo = document.getElementById('syncRepo').value.trim() || SYNC_DEFAULTS.repo;
+          syncCfg.branch = document.getElementById('syncBranch').value.trim() || SYNC_DEFAULTS.branch;
+          syncCfg.path = document.getElementById('syncPath').value.trim() || SYNC_DEFAULTS.path;
+          syncCfg.token = document.getElementById('syncToken').value.trim();
+          saveSyncConfig();
+          syncSha = null;
+          setSyncStatus(syncStatusLabel(), canWriteRemote() ? 'ok' : '');
+          if (canWriteRemote()) pushRemote();
+          else pullRemote();
+        },
+      },
+    ],
+  });
+}
+
+document.getElementById('syncPill').addEventListener('click', openSyncModal);
 
 // ---------- Init ----------
 
 function init() {
   ensureSchedule();
   ensureProgress();
-  saveState();
+  saveState({ remote: false });
   renderAll();
+  setSyncStatus(syncStatusLabel(), canWriteRemote() ? 'ok' : '');
+  pullRemote({ quiet: true });
 }
 
 init();

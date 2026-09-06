@@ -45,6 +45,26 @@ Back Squat/5/5/100
 - Weight is optional, units are ignored, and exercises you don't have yet are created
   automatically with a guessed category.
 
+## Sync between devices
+
+The whole app state lives in [`data.json`](data.json) in this repo, so every browser and
+device loads the same plan.
+
+- **Reading needs nothing.** On load — and whenever a tab is brought back to the front —
+  the site fetches `data.json` and adopts it when it is newer than the local copy, or when
+  the device has no data yet.
+- **Writing needs a token.** Open **Sync** in the header and paste a fine-grained GitHub
+  token limited to this repository with *Contents: Read and write*. Changes are then
+  committed back to `data.json` a couple of seconds after you stop tapping. The token is
+  kept in that browser's `localStorage` and never leaves the device except as the
+  `Authorization` header on GitHub's API.
+- Devices without a token still work — they read the shared plan and keep their own marks
+  locally.
+- Conflicts resolve by timestamp: the newer save wins, and a device that finds the repo
+  ahead of it pulls instead of overwriting.
+
+Because the repository is public, anything in `data.json` is public too.
+
 ## Running it locally
 
 ```bash
