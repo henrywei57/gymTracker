@@ -30,7 +30,8 @@
   </header>
 
   <nav class="tabs" id="tabs">
-    <button class="tab-btn active" data-tab="today">Log Workout</button>
+    <button class="tab-btn active" data-tab="home">Today</button>
+    <button class="tab-btn" data-tab="schedule">Schedule</button>
     <button class="tab-btn" data-tab="history">History</button>
     <button class="tab-btn" data-tab="exercises">Exercises &amp; PRs</button>
     <button class="tab-btn" data-tab="stats">Stats</button>
@@ -38,36 +39,39 @@
 
   <main id="views">
 
-    <!-- LOG WORKOUT -->
-    <section class="view active" id="view-today">
+    <!-- TODAY -->
+    <section class="view active" id="view-home">
+      <div class="card home-hero" id="homeHero"></div>
+      <div id="homeBody"></div>
+    </section>
+
+    <!-- SCHEDULE -->
+    <section class="view" id="view-schedule">
       <div class="card">
         <div class="card-row">
-          <label class="field">
-            <span>Date</span>
-            <input type="date" id="workoutDate">
-          </label>
-          <div class="day-status" id="dayStatus"></div>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="card-title">Add Exercise</div>
-        <div class="add-exercise-row" id="addExerciseRow">
-          <select id="exerciseSelect"></select>
-          <button class="btn btn-secondary" id="btnAddExerciseToLog">+ Add to Workout</button>
-          <button class="btn btn-ghost" id="btnNewExercise">New exercise…</button>
-        </div>
-        <div id="noExercisesPrompt" class="empty-state" style="display:none">
-          You haven't added any exercises yet.
-          <div style="margin-top:10px">
-            <button class="btn btn-primary" id="btnNewExerciseEmpty">+ Add Your First Exercise</button>
+          <div>
+            <div class="card-title" style="margin-bottom:2px">Weekly Plan</div>
+            <div class="week-range" id="weekRange"></div>
           </div>
+          <div class="day-status" id="weekProgress"></div>
+        </div>
+        <div class="add-exercise-row" style="margin-top:14px">
+          <select id="presetSelect">
+            <option value="">Start from a template…</option>
+            <option value="ppl6">Push / Pull / Legs — 6 days</option>
+            <option value="ppl3">Push / Pull / Legs — 3 days</option>
+            <option value="ul4">Upper / Lower — 4 days</option>
+            <option value="full3">Full Body — 3 days</option>
+          </select>
+          <button class="btn btn-secondary" id="btnApplyPreset">Apply</button>
+          <button class="btn btn-ghost" id="btnClearSchedule">Clear week</button>
+        </div>
+        <div class="add-exercise-row" style="margin-top:8px">
+          <button class="btn btn-secondary btn-block" id="btnImportWorkout">⬆ Import a session from text</button>
         </div>
       </div>
 
-      <div id="loggedExercises"></div>
-
-      <button class="btn btn-primary btn-block" id="btnSaveWorkout">Save Workout</button>
+      <div class="week-grid" id="weekGrid"></div>
     </section>
 
     <!-- HISTORY -->
