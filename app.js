@@ -55,8 +55,11 @@ function loadState() {
   return { exercises: [], workouts: [], prs: {}, estimates: {}, schedule: {}, progress: {} };
 }
 
+let lastWrittenRaw = localStorage.getItem(STORAGE_KEY);
+
 function saveState() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  lastWrittenRaw = JSON.stringify(state);
+  localStorage.setItem(STORAGE_KEY, lastWrittenRaw);
 }
 
 function getExercise(id) {
@@ -1278,18 +1281,46 @@ document.getElementById('modalBackdrop').addEventListener('click', e => {
   if (e.target.id === 'modalBackdrop') closeModal();
 });
 
-// ---------- Init ----------
+// ---------- Cross-tab sync ----------
 
-function init() {
+// Another tab of this browser wrote to localStorage, or this tab came back to the
+// foreground after one did. Re-read and repaint rather than keeping a stale copy.
+function reloadStateFromStorage() {
+  if (document.getElementById('modalBackdrop').classList.contains('open')) return;
+  const raw = localStorage.getItem(STORAGE_KEY);
+  if (raw === lastWrittenRaw) return;
+  state = loadState();
   ensureSchedule();
   ensureProgress();
-  saveState();
+  renderAll();
+}
+
+function renderAll() {
   renderHome();
   renderSchedule();
   renderStreakPill();
   renderHistory();
   renderExercisesTab();
   renderStats();
+}
+
+window.addEventListener('storage', e => {
+  if (e.key === STORAGE_KEY) reloadStateFromStorage();
+});
+
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) reloadStateFromStorage();
+});
+
+window.addEventListener('focus', reloadStateFromStorage);
+
+// ---------- Init ----------
+
+function init() {
+  ensureSchedule();
+  ensureProgress();
+  saveState();
+  renderAll();
 }
 
 init();
